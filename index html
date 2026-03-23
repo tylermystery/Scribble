@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scrabble Earthquake MVP</title>
+    <style>
+        body { font-family: 'Courier New', Courier, monospace; background: #f4f1ea; display: flex; flex-direction: column; align-items: center; padding: 20px; }
+        .container { max-width: 600px; width: 100%; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        textarea { width: 100%; height: 100px; margin-bottom: 10px; border: 2px solid #d35400; border-radius: 4px; padding: 10px; box-sizing: border-box; }
+        button { background: #d35400; color: white; border: none; padding: 15px 25px; cursor: pointer; font-weight: bold; width: 100%; border-radius: 4px; transition: 0.2s; }
+        button:hover { background: #e67e22; }
+        #board-container { margin-top: 20px; display: grid; grid-template-columns: repeat(15, 25px); grid-gap: 2px; background: #34495e; padding: 5px; border-radius: 4px; overflow-x: auto;}
+        .tile { width: 25px; height: 25px; background: #fff; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 14px; text-transform: uppercase; }
+        .empty { background: #ecf0f1; color: transparent; }
+        .stats { margin-top: 15px; font-size: 0.9em; color: #7f8c8d; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>🌋 Scrabble Earthquake</h2>
+    <p>Paste all your letters or words below:</p>
+    <textarea id="inputLetters" placeholder="Example: VIVID BOARD MOMS CRY REX..."></textarea>
+    <button onclick="triggerEarthquake()">TRIGGER EARTHQUAKE</button>
+    
+    <div class="stats" id="stats">Ready for metamorphosis...</div>
+    <div id="board-container"></div>
+</div>
+
+<script>
+// A tiny "High Value" dictionary focused on getting the "loud" letters out.
+// In a full version, we'd fetch a larger JSON dictionary.
+const MINI_DICT = [
+    "JUKEBOX", "VEXED", "QUARTZ", "WIZARD", "JOY", "AXIS", "VIVID", "RELY", 
+    "MOMS", "CRY", "REX", "TAG", "SLONE", "GEY", "BOARD", "VIBE", "AERO",
+    "DEAR", "WHEEL", "ROUTING", "KING", "LAZY", "JUMP", "DOG", "CAT", "IN", "TO"
+];
+
+const BOARD_SIZE = 15;
+let board = Array(BOARD_SIZE).fill(null).map(() => Array(BOARD_SIZE).fill(''));
+
+function triggerEarthquake() {
+    const rawInput = document.getElementById('inputLetters').value.toUpperCase();
+    const letters = rawInput.replace(/[^A-Z]/g, '').split('');
+    
+    if (letters.length === 0) return alert("Please enter some letters!");
+
+    // Priority 1: Sort letters to identify "loud" ones
+    const loudLetters = ['Q', 'Z', 'X', 'J', 'K', 'V', 'W', 'Y'];
+    
+    // Reset Board
+    board = Array(BOARD_SIZE).fill(null).map(() => Array(BOARD_SIZE).fill(''));
+    
+    document.getElementById('stats').innerText = "Processing metamorphosis...";
+    
+    // Simulate algorithm (In this MVP, we find words from our dict that use the pool)
+    const result = simpleBuild(letters);
+    renderBoard();
+    document.getElementById('stats').innerText = `Used ${result.used} of ${letters.length} letters.`;
+}
+
+function simpleBuild(availableLetters) {
+    let pool = [...availableLetters];
+    let usedCount = 0;
+
+    // Sort dictionary to prioritize "Loudest" and Longest words
+    const sortedDict = MINI_DICT.sort((a, b) => {
+        const score = (w) => w.split('').reduce((s, l) => s + (['Q','Z','J','X'].includes(l) ? 10 : 1), 0);
+        return score(b) - score(a);
+    });
+
+    // Strategy: Place the loudest word in the center first
+    for (let word of sortedDict) {
+        if (canMakeWord(word, pool)) {
+            placeWord(word, 7, 4, true); // Simplified placement
+            pool = consumeLetters(word, pool);
+            usedCount += word.length;
+            break; 
+        }
+    }
+    
+    // Note: A full recursive backtracking engine would go here.
+    // For this MVP UI, we demonstrate the 'Loud Letters First' logic by placement.
+    return { used: usedCount };
+}
+
+function canMakeWord(word, pool) {
+    let tempPool = [...pool];
+    for (let char of word) {
+        const idx = tempPool.indexOf(char);
+        if (idx === -1) return false;
+        tempPool.splice(idx, 1);
+    }
+    return true;
+}
+
+function consumeLetters(word, pool) {
+    for (let char of word) {
+        const idx = pool.indexOf(char);
+        pool.splice(idx, 1);
+    }
+    return pool;
+}
+
+function placeWord(word, row, col, horizontal) {
+    for (let i = 0; i < word.length; i++) {
+        if (horizontal) board[row][col + i] = word[i];
+        else board[row + i][col] = word[i];
+    }
+}
+
+function renderBoard() {
+    const container = document.getElementById('board-container');
+    container.innerHTML = '';
+    for (let r = 0; r < BOARD_SIZE; r++) {
+        for (let c = 0; c < BOARD_SIZE; c++) {
+            const div = document.createElement('div');
+            div.className = `tile ${board[r][c] ? '' : 'empty'}`;
+            div.innerText = board[r][c];
+            container.appendChild(div);
+        }
+    }
+}
+</script>
+</body>
+</html>
