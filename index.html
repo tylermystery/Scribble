@@ -3,13 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Scrabble Earthquake v4</title>
+    <title>Scrabble Earthquake v5</title>
     <style>
         :root { --primary: #d35400; --bg: #f4f1ea; --dark: #2c3e50; }
         body { font-family: sans-serif; background: var(--bg); display: flex; flex-direction: column; align-items: center; padding: 10px; margin: 0; }
         .container { max-width: 500px; width: 100%; background: white; padding: 15px; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); box-sizing: border-box; }
         textarea { width: 100%; height: 60px; margin-bottom: 10px; border: 2px solid #ddd; border-radius: 4px; padding: 10px; box-sizing: border-box; font-size: 16px; }
-        button { background: var(--primary); color: white; border: none; padding: 15px; cursor: pointer; font-weight: bold; width: 100%; border-radius: 4px; font-size: 18px; }
+        .controls { display: flex; gap: 10px; margin-bottom: 10px; }
+        button { flex: 1; background: var(--primary); color: white; border: none; padding: 15px; cursor: pointer; font-weight: bold; border-radius: 4px; font-size: 16px; }
+        button.secondary { background: #7f8c8d; }
         #board-container { margin-top: 20px; display: grid; grid-template-columns: repeat(15, 1fr); grid-gap: 1px; background: #95a5a6; border: 2px solid var(--dark); }
         .tile { aspect-ratio: 1/1; background: #fff; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 12px; text-transform: uppercase; }
         .empty { background: #ecf0f1; }
@@ -20,20 +22,24 @@
 <body>
 
 <div class="container">
-    <h2>🌋 Earthquake v4</h2>
+    <h2>🌋 Earthquake v5</h2>
     <textarea id="inputLetters" placeholder="Paste tiles here...">WIZARD HERO VOLKSWAGEN BUCSSERGNE</textarea>
-    <button onclick="triggerEarthquake()">TRIGGER METAMORPHOSIS</button>
+    <div class="controls">
+        <button onclick="triggerEarthquake(false)">EARTHQUAKE</button>
+        <button class="secondary" onclick="triggerEarthquake(true)">SHUFFLE & MIX</button>
+    </div>
     
     <div class="stats" id="stats">Ready...</div>
     <div id="board-container"></div>
-    <div class="debug-panel" id="debug">-- Engine Log --</div>
+    <div class="debug-panel" id="debug">-- Integrity Log --</div>
 </div>
 
 <script>
-// A robust word list to handle common tiles
 const BASE_DICT = [
-    "WIZARD","VOLKSWAGEN","JUKEBOX","QUARTZ","VEXED","AXIS","VIVID","JUMP","ZOO","EXIT","BOARD","ROUTING","WHEEL","SLONE","DEAR","RELY","GEY","TAG","REX","CRY","AERO","KING","LAZY","DOG","CAT","YOUNG","GLOVE","FOOL","NEST","POST","OXY","TYPE","PLAY","GAME","BUNS","BEER","SUNG","GENE","CURS","BERG","RUNS","EGGS","BLUE","BACK","CASE","SING","SEND","BENT","COB","SUN","ICE","ARE","TEN","METAMORPHOSIS"
+    "WIZARD","VOLKSWAGEN","JUKEBOX","QUARTZ","VEXED","AXIS","VIVID","VIBE","JUMP","EXIT","BOARD","ROUTING","WHEEL","SLONE","DEAR","RELY","GEY","TAG","REX","CRY","AERO","KING","LAZY","DOG","CAT","YOUNG","GLOVE","FOOL","NEST","POST","OXY","TYPE","PLAY","GAME","BUNS","BEER","SUNG","GENE","CURS","BERG","RUNS","EGGS","BLUE","BACK","CASE","SING","SEND","BENT","COB","SUN","ICE","ARE","TEN"
 ];
+// Global set for fast dictionary lookups
+const DICT_SET = new Set(BASE_DICT);
 
 const SIZE = 15;
 let grid, usedWords, pool;
@@ -44,20 +50,23 @@ function log(msg) {
     d.scrollTop = d.scrollHeight;
 }
 
-function triggerEarthquake() {
+function triggerEarthquake(shouldShuffle) {
     const raw = document.getElementById('inputLetters').value.toUpperCase();
     pool = raw.replace(/[^A-Z]/g, '').split('');
     document.getElementById('debug').innerHTML = '';
     grid = Array(SIZE).fill(null).map(() => Array(SIZE).fill(''));
     usedWords = new Set();
     
-    log(`Processing ${pool.length} letters...`);
-    
-    // Sort dict by complexity/length
-    const sortedDict = [...BASE_DICT].sort((a, b) => b.length - a.length);
+    let currentDict = [...BASE_DICT];
+    if (shouldShuffle) {
+        log("Shuffling dictionary for new transformation...");
+        currentDict.sort(() => Math.random() - 0.5);
+    } else {
+        currentDict.sort((a, b) => b.length - a.length);
+    }
 
     // 1. Seed
-    for(let w of sortedDict) {
+    for(let w of currentDict) {
         if(canAfford(w)) {
             place(w, 7, 3, true);
             pool = consume(w);
@@ -67,24 +76,20 @@ function triggerEarthquake() {
         }
     }
 
-    // 2. High-Efficiency Search
+    // 2. Scan and Build
     let found;
     do {
         found = false;
-        // Scan every tile on board
         for(let r=0; r<SIZE; r++) {
             for(let c=0; c<SIZE; c++) {
                 if(grid[r][c] !== '') {
                     const char = grid[r][c];
-                    // Find any word in dict containing this char
-                    for(let w of sortedDict) {
+                    for(let w of currentDict) {
                         if(usedWords.has(w)) continue;
-                        
                         let charIndices = [];
                         for(let i=0; i<w.length; i++) if(w[i] === char) charIndices.push(i);
 
                         for(let idx of charIndices) {
-                            // Try Vert and Horiz
                             if(tryPlace(w, r - idx, c, false)) { found = true; break; }
                             if(tryPlace(w, r, c - idx, true)) { found = true; break; }
                         }
@@ -105,22 +110,60 @@ function tryPlace(word, r, c, horiz) {
     if(r < 0 || c < 0 || (horiz && c+word.length > SIZE) || (!horiz && r+word.length > SIZE)) return false;
     
     let needed = "";
+    let tempGrid = grid.map(row => [...row]); // Shadow grid for validation
+    
     for(let i=0; i<word.length; i++) {
         let currR = horiz ? r : r + i;
         let currC = horiz ? c + i : c;
-        let existing = grid[currR][currC];
+        let existing = tempGrid[currR][currC];
+        
         if(existing !== '' && existing !== word[i]) return false;
         if(existing === '') needed += word[i];
+        
+        tempGrid[currR][currC] = word[i];
     }
-    
-    if(needed.length > 0 && canAfford(needed)) {
-        place(word, r, c, horiz);
+
+    if(needed.length === 0 || !canAfford(needed)) return false;
+
+    // SCRABBLE RULES: Check every word formed by this placement
+    if (isValidGrid(tempGrid)) {
+        grid = tempGrid; // Commit shadow grid to main grid
         pool = consume(needed);
         usedWords.add(word);
-        log(`Placed ${word} ${horiz?'H':'V'}`);
+        log(`Placed ${word}`);
         return true;
     }
     return false;
+}
+
+function isValidGrid(g) {
+    // Check all horizontal words formed
+    for(let r=0; r<SIZE; r++) {
+        let word = "";
+        for(let c=0; c<SIZE; c++) {
+            if(g[r][c] !== '') {
+                word += g[r][c];
+            } else {
+                if(word.length > 1 && !DICT_SET.has(word)) return false;
+                word = "";
+            }
+        }
+        if(word.length > 1 && !DICT_SET.has(word)) return false;
+    }
+    // Check all vertical words formed
+    for(let c=0; c<SIZE; c++) {
+        let word = "";
+        for(let r=0; r<SIZE; r++) {
+            if(g[r][c] !== '') {
+                word += g[r][c];
+            } else {
+                if(word.length > 1 && !DICT_SET.has(word)) return false;
+                word = "";
+            }
+        }
+        if(word.length > 1 && !DICT_SET.has(word)) return false;
+    }
+    return true;
 }
 
 function canAfford(sub) {
