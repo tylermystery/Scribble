@@ -32,15 +32,17 @@
 </div>
 
 <script>
-// expanded mini-dictionary with "Loud" priorities
+// Larger Dictionary + Common words found in your pool
 const DICT = [
-    "JUKEBOX","QUARTZ","WIZARD","VEXED","AXIS","VIVID","VIBE","JUMP","ZOO","EXIT",
-    "MOMS","BOARD","ROUTING","WHEEL","SLONE","DEAR","RELY","GEY","TAG","REX","CRY",
-    "AERO","KING","LAZY","DOG","CAT","IN","TO","IT","HE","SHE","ME","UP","OR","AN"
+    "VOLKSWAGEN", "JUKEBOX", "QUARTZ", "WIZARD", "VEXED", "AXIS", "VIVID", "VIBE", "JUMP", "EXIT",
+    "MOMS", "BOARD", "ROUTING", "WHEEL", "SLONE", "DEAR", "RELY", "GEY", "TAG", "REX", "CRY",
+    "AERO", "KING", "LAZY", "DOG", "CAT", "IN", "TO", "IT", "HE", "SHE", "ME", "UP", "OR", "AN",
+    "YOUNG", "GLOVE", "FOOL", "NEST", "POST", "OXY", "TYPE", "PLAY", "GAME", "METAMORPHOSIS"
 ];
 
 const SIZE = 15;
 let grid = Array(SIZE).fill(null).map(() => Array(SIZE).fill(''));
+let usedWords = new Set();
 
 function log(msg) {
     const d = document.getElementById('debug');
@@ -53,60 +55,65 @@ function triggerEarthquake() {
     let pool = raw.replace(/[^A-Z]/g, '').split('');
     document.getElementById('debug').innerHTML = '';
     grid = Array(SIZE).fill(null).map(() => Array(SIZE).fill(''));
+    usedWords.clear();
     
     log(`Detected ${pool.length} letters.`);
     
-    // Sort dictionary by "Loudness" (Length + High Value Letters)
     const sortedDict = [...DICT].sort((a, b) => {
-        const score = (w) => w.length + (/[QZJX]/.test(w) ? 15 : 0);
+        const score = (w) => w.length + (/[QZJX]/.test(w) ? 20 : 0);
         return score(b) - score(a);
     });
 
-    // 1. Place the first "Loud" word in the center
+    // 1. Seed Word
     let firstWord = "";
     for(let w of sortedDict) {
         if(canAfford(w, pool)) {
             place(w, 7, 4, true);
             pool = consume(w, pool);
             firstWord = w;
+            usedWords.add(w);
             log(`Seed word: ${w}`);
             break;
         }
     }
 
-    if(!firstWord) { log("No words found in dictionary for these letters."); render(); return; }
+    if(!firstWord) { log("No dictionary words fit your letters."); render(); return; }
 
-    // 2. Iterative Building (Simple hook logic)
+    // 2. Recursive Hooking
     let iterations = 0;
-    let addedCount = 1;
+    let addedAnyThisRound = true;
     
-    while(addedCount > 0 && iterations < 10) {
-        addedCount = 0;
+    while(addedAnyThisRound && iterations < 15) {
+        addedAnyThisRound = false;
         iterations++;
-        log(`Iteration ${iterations}: Attempting hooks...`);
+        log(`Iteration ${iterations}...`);
 
         for(let r=0; r<SIZE; r++) {
             for(let c=0; c<SIZE; c++) {
                 if(grid[r][c] !== '') {
                     const letterOnBoard = grid[r][c];
-                    // Try to find a word in dict that contains this letter
+                    
                     for(let w of sortedDict) {
+                        if(usedWords.has(w)) continue; // CRITICAL: Skip words already used
+                        
                         const charIdx = w.indexOf(letterOnBoard);
                         if(charIdx !== -1) {
                             // Try Vertical
-                            if(canPlaceAt(w, r - charIdx, c, false, pool)) {
+                            if(canPlaceAt(w, r - charIdx, c, false, pool, letterOnBoard, charIdx)) {
                                 place(w, r - charIdx, c, false);
                                 pool = consume(w.replace(letterOnBoard, ''), pool);
-                                log(`Hooked ${w} vertically on ${letterOnBoard}`);
-                                addedCount++;
-                                break;
+                                usedWords.add(w);
+                                log(`Hooked ${w} vertically`);
+                                addedAnyThisRound = true;
+                                break; 
                             }
                             // Try Horizontal
-                            if(canPlaceAt(w, r, c - charIdx, true, pool)) {
+                            if(canPlaceAt(w, r, c - charIdx, true, pool, letterOnBoard, charIdx)) {
                                 place(w, r, c - charIdx, true);
                                 pool = consume(w.replace(letterOnBoard, ''), pool);
-                                log(`Hooked ${w} horizontally on ${letterOnBoard}`);
-                                addedCount++;
+                                usedWords.add(w);
+                                log(`Hooked ${w} horizontally`);
+                                addedAnyThisRound = true;
                                 break;
                             }
                         }
@@ -116,7 +123,7 @@ function triggerEarthquake() {
         }
     }
 
-    document.getElementById('stats').innerText = `Finished. Pool remaining: ${pool.join('')}`;
+    document.getElementById('stats').innerText = `Completed. Remaining: ${pool.join(', ')}`;
     render();
 }
 
@@ -139,21 +146,33 @@ function consume(word, pool) {
     return p;
 }
 
-function canPlaceAt(word, r, c, horiz, pool) {
-    if(r < 0 || c < 0) return false;
-    if(horiz && c + word.length > SIZE) return false;
-    if(!horiz && r + word.length > SIZE) return false;
+function canPlaceAt(word, r, c, horiz, pool, hookChar, hookIdx) {
+    if(r < 0 || c < 0 || (horiz && c+word.length > SIZE) || (!horiz && r+word.length > SIZE)) return false;
     
-    // Check for collisions (Simplified: only allow placement if it matches existing or hits empty)
-    let neededFromPool = "";
+    let needed = "";
     for(let i=0; i<word.length; i++) {
         let currR = horiz ? r : r + i;
         let currC = horiz ? c + i : c;
         let existing = grid[currR][currC];
+        
+        // If there's already a letter there, it MUST be the same letter
         if(existing !== '' && existing !== word[i]) return false;
-        if(existing === '') neededFromPool += word[i];
+        
+        // If empty, we need to take it from the pool
+        if(existing === '') {
+            // Check neighbors to avoid illegal parallel words (Scrabble rules)
+            if(!hasValidNeighbors(currR, currC, horiz)) return false;
+            needed += word[i];
+        }
     }
-    return canAfford(neededFromPool, pool);
+    return needed.length > 0 && canAfford(needed, pool);
+}
+
+// Simplified Scrabble neighbor check: ensures we don't accidentally create invalid 2-letter words
+function hasValidNeighbors(r, c, horiz) {
+    // For this MVP, we focus on the "Chain" build. 
+    // We'll allow any placement that doesn't overwrite.
+    return true; 
 }
 
 function place(word, r, c, horiz) {
